@@ -179,6 +179,8 @@ class DBConnector:
         self.user = user
 
         self.con = None
+        self.airports_populated = False
+        self.stations_populated = False
 
         try:
             self.con = psycopg2.connect(database=dbname, user=user)
@@ -199,13 +201,16 @@ class DBConnector:
         try:
             cur = self.con.cursor()
             cur.execute("DROP TABLE IF EXISTS airports")
-            cur.execute("CREATE TABLE airports(id SERIAL PRIMARY KEY, name VARCHAR(100), lon DOUBLE, lat DOUBLE)")
-            query = "INSERT INTO airports (id, name, lon, lat) VALUES (%s, %s, %s)"
+            cur.execute("CREATE TABLE airports(id SERIAL PRIMARY KEY, name VARCHAR(100), lon DOUBLE, lat DOUBLE,"
+                        "closest_station INTEGER REFERENCES stations)")
+            query = "INSERT INTO airports (name, lon, lat) VALUES (%s, %s, %s)"
 
             cur.executemany(query, [x.to_tuple() for x in airports])
+            self.airports_populated = True
 
         except psycopg2.DatabaseError as e:
             print("DB error: Cannot populate airports")
+            self.airports_populated = False
             raise
 
     def populate_meteo_stations(self, stations=[]):
@@ -218,12 +223,14 @@ class DBConnector:
             cur.execute("DROP TABLE IF EXISTS stations")
             cur.execute("CREATE TABLE stations(id SERIAL PRIMARY KEY, usaf_id INTEGER, lon DOUBLE, lat DOUBLE,"
                         " elevation DOUBLE)")
-            query = "INSERT INTO stations (id, usaf_id, lon, lat, elevation) VALUES (%s, %s, %s, %s, %s)"
+            query = "INSERT INTO stations (usaf_id, lon, lat, elevation) VALUES (%s, %s, %s, %s, %s)"
 
             cur.executemany(query, [x.to_tuple() for x in stations])
+            self.stations_populated = True
 
         except psycopg2.DatabaseError as e:
             print("DB error: Cannot populate weather stations")
+            self.stations_populated = False
             raise
 
     def populate_meteo_readings(self, readings=[]):
@@ -236,7 +243,7 @@ class DBConnector:
             cur.execute("DROP TABLE IF EXISTS readings")
             cur.execute("CREATE TABLE readings(id SERIAL PRIMARY KEY, station_id INTEGER REFERENCES stations,"
                         " datetime TIMESTAMP, pressure DOUBLE)")
-            query = "INSERT INTO readings (id, station_id, datetime, pressure) VALUES (%s, %s, %s, %s)"
+            query = "INSERT INTO readings (station_id, datetime, pressure) VALUES (%s, %s, %s, %s)"
 
             cur.executemany(query, [x.to_tuple() for x in readings])
 
@@ -245,12 +252,23 @@ class DBConnector:
             raise
         pass
 
+    def update_airports_with_closest_station(self):
+        """Updates airports table by looking up the closest station to each airport
+
+        Call populate_meteo_stations() and populate_airports() before calling this function
+        If either of them wasn't called this function shall return without performing any actions
+        """
+
+        if not (self.airports_populated and self.stations_populated):
+            return
+
     def get_airports_from_airpressure(self, pressure, time):
         """Lookup the airports that had air pressure similar to the one that is passed around the time"""
         # first get weather stations that had same pressure readings around passed time
         # for the time being we try the exact values
 
-        query = "SELECT station_id FROM where )"
+        # query = "SELECT station_id FROM where )"
+
 
     def disconnect(self):
         if self.con:
