@@ -2,11 +2,11 @@
 
 # -*- coding: utf-8 -*-
 
+import csv
 import datetime
-import sys
-import re
-
 import psycopg2
+import re
+import sys
 
 class Airport:
     """This represents an airport"""
@@ -49,6 +49,7 @@ class MeteoParser:
 
     def __init__(self):
         self.datetime_format = "%Y%m%d%H%M"
+        self.date_format = "%Y%m%d"
 
         # regex for mandatory data, we have to match it since we suppose the beginning of the string
         self.parse_re_mandatory = re.compile(
@@ -71,6 +72,15 @@ class MeteoParser:
             "(?:.{6})"  # not required fields
             "(?P<air_pres>[0-9]{5})"  # absolute atm pressure
         )
+
+        # Following is a current format of CSV IDS history file
+        # "USAF","WBAN","STATION NAME","CTRY","STATE","ICAO","LAT","LON","ELEV(M)","BEGIN","END"
+        self.lat_csv_str = "LAT"
+        self.long_csv_str = "LON"
+        self.usaf_csv_str = "USAF"
+        self.elev_csv_str = "ELEV(M)"
+        self.beg_csv_str = "BEGIN"
+        self.end_csv_str = "END"
 
     def parse_files(self, filenames=[]):
         """Returns {MeteoStation, [MeteoReadings]}"""
@@ -121,6 +131,44 @@ class MeteoParser:
             return []
 
         return readings
+
+    def parse_meteo_stations(self, filename="", end_date=datetime.datetime.now()):
+        """Parses CSV IDS history file to extract weather station information
+
+        Keyword arguments:
+        filename -- name of ISD history file to parse
+        end_date -- minimum required end date for the readings
+                    If the weather station does not have readings until this date it is not going to be included
+
+        """
+
+        stations = []
+
+        if not filename:
+            return []
+
+        try:
+            with open(filename, newline='') as f:
+                station_reader = csv.DictReader(f, delimiter=',')
+                for row in station_reader:
+                    dt = datetime.datetime.strptime(row[self.end_csv_str], self.date_format)
+                    if dt < end_date:
+                        continue
+
+                    lat = row[self.lat_csv_str]
+                    lon = row[self.long_csv_str]
+                    elev = row[self.elev_csv_str]
+                    usaf_id = row[self.usaf_csv_str]
+
+                    if not (len(lat) and len(lon) and len(elev) and len(usaf_id)):
+                        continue
+
+                    stations.append(MeteoStation(usaf_id, lon, lat, elev))
+        except IOError:
+            print("Cannot open file %s" % filename)
+            return []
+
+        return stations
 
 
 class DBConnector:
@@ -202,7 +250,7 @@ class DBConnector:
         # first get weather stations that had same pressure readings around passed time
         # for the time being we try the exact values
 
-        query = "SELECT (station_id where )"
+        query = "SELECT station_id FROM where )"
 
     def disconnect(self):
         if self.con:
@@ -215,6 +263,6 @@ mp = MeteoParser()
 # ver = cur.fetchone()
 # print(ver)
 
-readings = mp.parse_file("../test/062800-99999-2016")
+readings = mp.parse_file("../data/725300-94846-2016")
+stations = mp.parse_meteo_stations("../data/isd-history.csv", datetime.datetime(2016, 12, 1))
 
-print(readings)
